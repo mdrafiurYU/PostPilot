@@ -1,0 +1,19 @@
+{
+  "name": "@postpilot/integration-tests",
+  "version": "0.0.1",
+  "description": "End-to-end pipeline integration tests for PostPilot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@postpilot/events": "workspace:*",
+    "@postpilot/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

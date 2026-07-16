@@ -1,0 +1,21 @@
+{
+  "name": "@postpilot/types",
+  "version": "0.0.1",
+  "description": "Shared TypeScript types and interfaces for PostPilot",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "echo \"No tests for types package\""
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

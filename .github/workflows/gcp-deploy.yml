@@ -1,0 +1,105 @@
+name: CI/CD — Cloud Build + Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to deploy (leave empty to deploy all)'
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set gcloud project
+        run: |
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Install gcloud components
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Build & push images (Cloud Build)
+        env:
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          ARTIFACT_REPO: ${{ secrets.ARTIFACT_REPO }}
+        run: |
+          gcloud builds submit --config cloudbuild.yaml \
+            --substitutions=_GCP_REGION=${GCP_REGION},_ARTIFACT_REPO=${ARTIFACT_REPO}
+
+      - name: Make deploy script executable
+        run: chmod +x ./scripts/deploy-gcp.sh
+
+      - name: "Dry-run: validate deploy script invocation"
+        env:
+          IMAGE_TAG: latest
+          VPC_CONNECTOR: ${{ secrets.VPC_CONNECTOR }}
+          CLOUDSQL_INSTANCES: ${{ secrets.CLOUDSQL_INSTANCES }}
+        run: |
+          echo "→ Running dry-run checks (no resources will be modified)"
+          bash -n ./scripts/deploy-gcp.sh || { echo "Syntax check failed"; exit 1; }
+
+          FLAGS=""
+          if [ -n "${VPC_CONNECTOR}" ]; then
+            FLAGS="${FLAGS} --vpc-connector ${VPC_CONNECTOR}"
+          fi
+          if [ -n "${CLOUDSQL_INSTANCES}" ]; then
+            FLAGS="${FLAGS} --add-cloudsql-instances ${CLOUDSQL_INSTANCES}"
+          fi
+
+          echo "Constructed flags: ${FLAGS}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.service }}" ]; then
+            echo "Dry-run single-service deploy command:"
+            echo "SERVICE=${{ github.event.inputs.service }} IMAGE_TAG=${IMAGE_TAG} ./scripts/deploy-gcp.sh ${FLAGS}"
+          else
+            echo "Dry-run full deploy command:"
+            echo "IMAGE_TAG=${IMAGE_TAG} ./scripts/deploy-gcp.sh ${FLAGS}"
+          fi
+
+      - name: Deploy to Cloud Run (calls scripts/deploy-gcp.sh)
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          ARTIFACT_REPO: ${{ secrets.ARTIFACT_REPO }}
+          IMAGE_TAG: latest
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          VPC_CONNECTOR: ${{ secrets.VPC_CONNECTOR }}
+          CLOUDSQL_INSTANCES: ${{ secrets.CLOUDSQL_INSTANCES }}
+        run: |
+          # optional: deploy a single service when triggered manually
+          FLAGS=""
+          if [ -n "${VPC_CONNECTOR}" ]; then
+            FLAGS="${FLAGS} --vpc-connector ${VPC_CONNECTOR}"
+          fi
+          if [ -n "${CLOUDSQL_INSTANCES}" ]; then
+            FLAGS="${FLAGS} --add-cloudsql-instances ${CLOUDSQL_INSTANCES}"
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.service }}" ]; then
+            SERVICE="${{ github.event.inputs.service }}"
+            echo "Deploying single service: ${SERVICE}"
+            SERVICE=${SERVICE} IMAGE_TAG=${IMAGE_TAG} ./scripts/deploy-gcp.sh ${FLAGS}
+          else
+            echo "Deploying all services"
+            IMAGE_TAG=${IMAGE_TAG} ./scripts/deploy-gcp.sh ${FLAGS}
+          fi

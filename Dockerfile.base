@@ -1,0 +1,26 @@
+# Base image shared by all PostPilot services.
+# Build this first and push to your registry, then reference it in each service Dockerfile.
+#
+# docker build -f Dockerfile.base -t postpilot-base:latest .
+
+FROM node:20-alpine AS base
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /app
+
+# Copy workspace manifests first for layer caching
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/types/package.json       ./packages/types/
+COPY packages/events/package.json      ./packages/events/
+COPY packages/queue/package.json       ./packages/queue/
+
+# Install all workspace dependencies (production + dev for build)
+RUN pnpm install --frozen-lockfile
+
+# Copy and build shared packages
+COPY packages/ ./packages/
+RUN pnpm --filter @postpilot/types  run build
+RUN pnpm --filter @postpilot/events run build
+RUN pnpm --filter @postpilot/queue  run build

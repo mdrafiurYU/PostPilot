@@ -1,0 +1,15 @@
+{
+  "name": "@postpilot/load-tests",
+  "version": "0.0.1",
+  "description": "k6 load and performance tests for PostPilot services",
+  "private": true,
+  "scripts": {
+    "asset":      "k6 run k6/asset-service.js",
+    "publishing": "k6 run k6/publishing-service.js",
+    "targeting":  "k6 run k6/targeting-engine.js",
+    "analytics":  "k6 run k6/analytics-engine.js",
+    "gateway":    "k6 run k6/api-gateway.js",
+    "soak":       "k6 run k6/soak.js",
+    "bench":      "pnpm --filter @postpilot/integration-tests vitest run src/pipeline.concurrency.bench.ts"
+  }
+}

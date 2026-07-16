@@ -1,0 +1,86 @@
+# Generic service Dockerfile — parameterised by SERVICE_NAME and PORT.
+# Build context: postpilot/ (monorepo root)
+#
+# Usage:
+#   docker build \
+#     --build-arg SERVICE_NAME=asset-service \
+#     --build-arg SERVICE_PORT=3001 \
+#     -f Dockerfile.service \
+#     -t postpilot/asset-service:latest .
+
+ARG SERVICE_NAME
+ARG SERVICE_PORT=3000
+
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+ARG SERVICE_NAME
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+# Workspace manifests (layer-cached)
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY tsconfig.base.json ./
+COPY packages/types/package.json       ./packages/types/
+COPY packages/events/package.json      ./packages/events/
+COPY packages/logger/package.json      ./packages/logger/
+COPY packages/queue/package.json       ./packages/queue/
+COPY services/${SERVICE_NAME}/package.json ./services/${SERVICE_NAME}/
+
+RUN pnpm install --frozen-lockfile
+
+# Source
+COPY packages/                         ./packages/
+COPY services/${SERVICE_NAME}/         ./services/${SERVICE_NAME}/
+
+# Build shared packages then the service
+RUN pnpm --filter @postpilot/types     run build
+RUN pnpm --filter @postpilot/events    run build
+RUN pnpm --filter @postpilot/logger    run build
+RUN pnpm --filter @postpilot/queue      run build
+RUN pnpm --filter @postpilot/${SERVICE_NAME} run build
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM node:20-alpine AS runtime
+
+ARG SERVICE_NAME
+ARG SERVICE_PORT
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/types/package.json       ./packages/types/
+COPY packages/events/package.json      ./packages/events/
+COPY packages/logger/package.json      ./packages/logger/
+COPY packages/queue/package.json       ./packages/queue/
+COPY services/${SERVICE_NAME}/package.json ./services/${SERVICE_NAME}/
+
+RUN pnpm install --frozen-lockfile --prod
+
+RUN rm -rf services/${SERVICE_NAME}/node_modules/@postpilot
+
+COPY --from=builder /app/packages/types/dist   ./packages/types/dist/
+COPY --from=builder /app/packages/events/dist  ./packages/events/dist/
+COPY --from=builder /app/packages/logger/dist  ./packages/logger/dist/
+COPY --from=builder /app/packages/queue/dist     ./packages/queue/dist/
+COPY --from=builder /app/services/${SERVICE_NAME}/dist ./services/${SERVICE_NAME}/dist
+
+RUN mkdir -p /app/node_modules/@postpilot && \
+    ln -s /app/packages/types /app/node_modules/@postpilot/types && \
+    ln -s /app/packages/events /app/node_modules/@postpilot/events && \
+    ln -s /app/packages/logger /app/node_modules/@postpilot/logger && \
+    ln -s /app/packages/queue /app/node_modules/@postpilot/queue
+
+ ENV NODE_ENV=production
+ ENV PORT=${SERVICE_PORT}
+ ENV SERVICE_NAME=${SERVICE_NAME}
+ ENV NODE_PATH=/app/node_modules:/app/packages/logger/node_modules:/app/packages/queue/node_modules
+
+ EXPOSE ${SERVICE_PORT}
+
+# Run as non-root
+USER node
+
+CMD ["sh", "-c", "node services/${SERVICE_NAME}/dist/index.js"]

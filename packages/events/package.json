@@ -1,0 +1,25 @@
+{
+  "name": "@postpilot/events",
+  "version": "0.0.1",
+  "description": "Shared message bus event schemas for PostPilot",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "echo \"No tests for events package\""
+  },
+  "dependencies": {
+    "@postpilot/types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

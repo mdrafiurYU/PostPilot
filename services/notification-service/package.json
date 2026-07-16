@@ -1,0 +1,27 @@
+{
+  "name": "@postpilot/notification-service",
+  "version": "0.0.1",
+  "description": "In-app, push, and email notification delivery",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@postpilot/events": "workspace:*",
+    "@postpilot/queue": "workspace:*",
+    "@postpilot/types": "workspace:*",
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "ws": "^8.17.0",
+    "@postpilot/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/pg": "^8.11.5",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

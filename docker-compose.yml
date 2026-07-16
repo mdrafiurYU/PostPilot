@@ -1,0 +1,84 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: postpilot-postgres
+    environment:
+      POSTGRES_DB: postpilot
+      POSTGRES_USER: postpilot
+      POSTGRES_PASSWORD: postpilot
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postpilot']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: postpilot-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostPilot Web — Next.js frontend
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: postpilot-web
+    ports:
+      - '3001:3001'
+    environment:
+      NEXT_PUBLIC_API_URL: http://api-gateway:3000
+      PORT: 3001
+    depends_on:
+      - api-gateway
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3001']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostPilot API Gateway — backend entry point
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: api-gateway
+        SERVICE_PORT: 3000
+    container_name: postpilot-api-gateway
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://postpilot:postpilot@postgres:5432/postpilot
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: postpilot-dev-secret
+      ASSET_SERVICE_URL: http://asset-service:3001
+      AUTH_SERVICE_URL: http://auth-service:3004
+      PUBLISHING_SERVICE_URL: http://publishing-service:3005
+      TARGETING_SERVICE_URL: http://targeting-engine:3006
+      ANALYTICS_SERVICE_URL: http://analytics-engine:3007
+      NOTIFICATION_SERVICE_URL: http://notification-service:3008
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

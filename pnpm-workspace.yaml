@@ -1,0 +1,6 @@
+packages:
+  - 'packages/*'
+  - 'services/*'
+  - 'apps/*'
+  - 'integration-tests'
+  - 'load-tests'

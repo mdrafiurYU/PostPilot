@@ -1,0 +1,180 @@
+# PostPilot — Cloud Build configuration
+# Builds all service Docker images and pushes to Artifact Registry.
+#
+# Trigger: Push to main branch, or manual trigger via:
+#   gcloud builds submit --config cloudbuild.yaml .
+#
+# Required substitutions:
+#   _GCP_REGION     — e.g. us-central1
+#   _ARTIFACT_REPO  — Artifact Registry repo name (default: postpilot)
+
+substitutions:
+  _GCP_REGION: us-central1
+  _ARTIFACT_REPO: postpilot
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+# ── Build all service images in parallel ──────────────────────────────────
+
+steps:
+  # ── Backend services ──────────────────────────────────────────────────────
+
+  - id: build-api-gateway
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=api-gateway
+      - --build-arg=SERVICE_PORT=3000
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-asset-service
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=asset-service
+      - --build-arg=SERVICE_PORT=3001
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-auth-service
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=auth-service
+      - --build-arg=SERVICE_PORT=3004
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/auth-service:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/auth-service:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-publishing-service
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=publishing-service
+      - --build-arg=SERVICE_PORT=3005
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/publishing-service:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/publishing-service:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-targeting-engine
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=targeting-engine
+      - --build-arg=SERVICE_PORT=3006
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/targeting-engine:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/targeting-engine:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-analytics-engine
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=analytics-engine
+      - --build-arg=SERVICE_PORT=3007
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/analytics-engine:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/analytics-engine:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-notification-service
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=notification-service
+      - --build-arg=SERVICE_PORT=3008
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/notification-service:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/notification-service:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-compression-engine
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=compression-engine
+      - --build-arg=SERVICE_PORT=3009
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/compression-engine:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/compression-engine:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-transcoder
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=transcoder
+      - --build-arg=SERVICE_PORT=3010
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/transcoder:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/transcoder:latest
+      - .
+    waitFor: ['-']
+
+  - id: build-repurposing-engine
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SERVICE_NAME=repurposing-engine
+      - --build-arg=SERVICE_PORT=3011
+      - -f=Dockerfile.service
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/repurposing-engine:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/repurposing-engine:latest
+      - .
+    waitFor: ['-']
+
+  # ── Web frontend ─────────────────────────────────────────────────────────
+
+  - id: build-web
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f=apps/web/Dockerfile
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/web:$SHORT_SHA
+      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/web:latest
+      - .
+    waitFor: ['-']
+
+# ── Push all images to Artifact Registry ──────────────────────────────────
+
+images:
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/auth-service:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/auth-service:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/publishing-service:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/publishing-service:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/targeting-engine:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/targeting-engine:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/analytics-engine:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/analytics-engine:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/notification-service:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/notification-service:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/compression-engine:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/compression-engine:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/transcoder:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/transcoder:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/repurposing-engine:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/repurposing-engine:latest
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/web:$SHORT_SHA
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/web:latest

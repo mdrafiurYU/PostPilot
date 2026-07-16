@@ -1,0 +1,30 @@
+{
+  "name": "postpilot",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r run dev",
+    "dev:web": "pnpm --filter @postpilot/web run dev",
+    "dev:services": "pnpm --filter !@postpilot/web -r run dev",
+    "test": "pnpm -r run test",
+    "test:web": "pnpm --filter @postpilot/web run test",
+    "test:services": "pnpm --filter !@postpilot/web -r run test",
+    "test:e2e": "./scripts/test-e2e.sh",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write .",
+    "migrate:up": "node-pg-migrate up",
+    "migrate:down": "node-pg-migrate down"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
