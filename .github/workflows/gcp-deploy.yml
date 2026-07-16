@@ -97,6 +97,7 @@ jobs:
       - name: Deploy to Cloud Run
         shell: bash
         env:
+          CLOUD_RUN_SA: postpilot-cloud-run@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_REGION: ${{ secrets.GCP_REGION }}
           ARTIFACT_REPO: ${{ secrets.ARTIFACT_REPO }}
