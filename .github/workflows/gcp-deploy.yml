@@ -59,7 +59,7 @@ jobs:
 
           gcloud builds submit \
             --config cloudbuild.yaml \
-            --substitutions=_GCP_REGION=${GCP_REGION},_ARTIFACT_REPO=${ARTIFACT_REPO}
+            --substitutions=_GCP_REGION=${GCP_REGION},_ARTIFACT_REPO=${ARTIFACT_REPO},_IMAGE_TAG=${GITHUB_SHA}
 
       - name: Make deploy script executable
         run: chmod +x ./scripts/deploy-gcp.sh
