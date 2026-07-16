@@ -2,7 +2,7 @@
 # Build context: postpilot/ (monorepo root)
 # docker build -f services/api-gateway/Dockerfile -t postpilot/api-gateway:latest .
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
@@ -26,7 +26,7 @@ RUN pnpm --filter @postpilot/logger   run build
 RUN pnpm --filter @postpilot/api-gateway run build
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
