@@ -56,7 +56,7 @@ if [[ -n "${CLOUDSQL_INSTANCES}" ]]; then
 fi
 
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
-GCP_REGION="${GCP_REGION:-us-central1}"
+GCP_REGION="${GCP_REGION:-northamerica-northeast1}"
 ARTIFACT_REPO="${ARTIFACT_REPO:-postpilot}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
