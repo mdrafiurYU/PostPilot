@@ -2,9 +2,10 @@
 # Build context: postpilot/ (monorepo root)
 # docker build -f services/api-gateway/Dockerfile -t postpilot/api-gateway:latest .
 
-FROM node:22-alpine AS builder
+ARG BASE_IMAGE=node:22-alpine
+FROM ${BASE_IMAGE} AS builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
@@ -28,7 +29,7 @@ RUN pnpm --filter @postpilot/api-gateway run build
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./

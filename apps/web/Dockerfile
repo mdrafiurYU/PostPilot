@@ -4,9 +4,10 @@
 # docker build -f apps/web/Dockerfile -t postpilot/web:latest .
 
 # ── Builder ───────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+ARG BASE_IMAGE=node:22-alpine
+FROM ${BASE_IMAGE} AS builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 # Workspace manifests (layer-cached)
@@ -34,7 +35,7 @@ RUN pnpm --filter @postpilot/web run build
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 ENV NODE_ENV=production
