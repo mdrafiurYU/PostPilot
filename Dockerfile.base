@@ -11,7 +11,7 @@ RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 # Copy workspace manifests first for layer caching
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/types/package.json       ./packages/types/
 COPY packages/events/package.json      ./packages/events/
 COPY packages/queue/package.json       ./packages/queue/
