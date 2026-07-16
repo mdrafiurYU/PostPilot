@@ -179,6 +179,8 @@ steps:
 # ── Push all images to Artifact Registry ──────────────────────────────────
 
 images:
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:${_IMAGE_TAG}
+  - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:latest
   - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:${_IMAGE_TAG}
   - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:latest
   - ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:${_IMAGE_TAG}

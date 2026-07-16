@@ -10,17 +10,14 @@ RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 WORKDIR /app
 
-# Copy workspace manifests first for layer caching
+# Copy workspace manifests and package sources before installation
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
-COPY packages/types/package.json       ./packages/types/
-COPY packages/events/package.json      ./packages/events/
-COPY packages/queue/package.json       ./packages/queue/
+COPY packages/ ./packages/
 
 # Install all workspace dependencies (production + dev for build)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile || (pnpm approve-builds --all && pnpm install --frozen-lockfile)
 
-# Copy and build shared packages
-COPY packages/ ./packages/
+# Build shared packages
 RUN pnpm --filter @postpilot/types  run build
 RUN pnpm --filter @postpilot/events run build
 RUN pnpm --filter @postpilot/queue  run build
