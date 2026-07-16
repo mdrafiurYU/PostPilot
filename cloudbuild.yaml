@@ -16,12 +16,17 @@ substitutions:
 steps:
   - id: build-base-image
     name: gcr.io/cloud-builders/docker
+    entrypoint: bash
     args:
-      - build
-      - -f=Dockerfile.base
-      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:${_IMAGE_TAG}
-      - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:latest
-      - .
+      - -c
+      - |
+          set -euo pipefail
+          docker build -f=Dockerfile.base \
+            -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:${_IMAGE_TAG} \
+            -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:latest \
+            .
+          docker push ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:${_IMAGE_TAG}
+          docker push ${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/postpilot-base:latest
     waitFor: ['-']
 
 # ── Build all service images in parallel ──────────────────────────────────
@@ -39,7 +44,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/api-gateway:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-asset-service
     name: gcr.io/cloud-builders/docker
@@ -52,7 +57,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/asset-service:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-auth-service
     name: gcr.io/cloud-builders/docker
@@ -65,7 +70,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/auth-service:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/auth-service:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-publishing-service
     name: gcr.io/cloud-builders/docker
@@ -78,7 +83,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/publishing-service:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/publishing-service:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-targeting-engine
     name: gcr.io/cloud-builders/docker
@@ -91,7 +96,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/targeting-engine:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/targeting-engine:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-analytics-engine
     name: gcr.io/cloud-builders/docker
@@ -104,7 +109,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/analytics-engine:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/analytics-engine:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-notification-service
     name: gcr.io/cloud-builders/docker
@@ -117,7 +122,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/notification-service:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/notification-service:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-compression-engine
     name: gcr.io/cloud-builders/docker
@@ -130,7 +135,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/compression-engine:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/compression-engine:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-transcoder
     name: gcr.io/cloud-builders/docker
@@ -143,7 +148,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/transcoder:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/transcoder:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   - id: build-repurposing-engine
     name: gcr.io/cloud-builders/docker
@@ -156,7 +161,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/repurposing-engine:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/repurposing-engine:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
   # ── Web frontend ─────────────────────────────────────────────────────────
 
@@ -169,7 +174,7 @@ steps:
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/web:${_IMAGE_TAG}
       - -t=${_GCP_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/web:latest
       - .
-    waitFor: ['-']
+    waitFor: ['build-base-image']
 
 # ── Push all images to Artifact Registry ──────────────────────────────────
 
