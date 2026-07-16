@@ -1,268 +1,454 @@
 #!/usr/bin/env bash
-# Deploy all PostPilot services to Google Cloud Run.
+
+# Deploy PostPilot services to Google Cloud Run
 #
-# Prerequisites:
-#   - Google Cloud SDK (gcloud CLI) installed and configured
-#   - Logged in: gcloud auth login
-#   - Project set: gcloud config set project YOUR_PROJECT_ID
-#   - Artifact Registry repository created (e.g., named 'postpilot' in your region)
-#   - Cloud SQL for PostgreSQL and Memorystore for Redis instances provisioned
-#   - Necessary environment variables set/passed
+# Required environment variables:
+#
+# GCP_PROJECT_ID
+# GCP_REGION
+# ARTIFACT_REPO
+# IMAGE_TAG
+#
+# Required secrets:
+#
+# DATABASE_URL
+# REDIS_URL
+# JWT_SECRET
+#
+# Optional:
+#
+# SERVICE
+# VPC_CONNECTOR
+# CLOUDSQL_INSTANCES
+# CLOUD_RUN_SA
 #
 # Usage:
-#   GCP_PROJECT_ID=my-project GCP_REGION=us-central1 ./scripts/deploy-gcp.sh
-#   SERVICE=api-gateway GCP_PROJECT_ID=my-project GCP_REGION=us-central1 ./scripts/deploy-gcp.sh # deploy single service
 #
-# Additional optional CLI flags:
-#   --vpc-connector <connector-name>             : attach Serverless VPC Connector to Cloud Run services
-#   --add-cloudsql-instances <inst1,inst2,...>   : add Cloud SQL instances to Cloud Run services
+# ./deploy-gcp.sh
+#
+# Deploy single service:
+#
+# SERVICE=api-gateway ./deploy-gcp.sh
+
 
 set -euo pipefail
 
+
 cd "$(dirname "$0")/.."
 
-# Parse optional CLI flags for Cloud Run networking
-VPC_CONNECTOR="${VPC_CONNECTOR:-}"
-CLOUDSQL_INSTANCES="${CLOUDSQL_INSTANCES:-}"
-while [[ "$#" -gt 0 ]]; do
-  case "$1" in
-    --vpc-connector)
-      VPC_CONNECTOR="$2"
-      shift 2
-      ;;
-    --add-cloudsql-instances)
-      CLOUDSQL_INSTANCES="$2"
-      shift 2
-      ;;
-    --help|-h)
-      echo "Usage: $0 [--vpc-connector NAME] [--add-cloudsql-instances INSTANCES]"
-      exit 0
-      ;;
-    *)
-      # unknown arg; ignore (other env vars still used)
-      shift
-      ;;
-  esac
-done
 
-# Build flags to pass to gcloud run deploy
-VPC_FLAG=""
-CLOUDSQL_FLAG=""
-if [[ -n "${VPC_CONNECTOR}" ]]; then
-  VPC_FLAG="--vpc-connector ${VPC_CONNECTOR}"
-fi
-if [[ -n "${CLOUDSQL_INSTANCES}" ]]; then
-  CLOUDSQL_FLAG="--add-cloudsql-instances ${CLOUDSQL_INSTANCES}"
-fi
+#######################################
+# Configuration
+#######################################
 
-GCP_PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
+GCP_PROJECT_ID="${GCP_PROJECT_ID:?GCP_PROJECT_ID is required}"
+
 GCP_REGION="${GCP_REGION:-northamerica-northeast1}"
+
 ARTIFACT_REPO="${ARTIFACT_REPO:-postpilot}"
+
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-if [[ -z "${GCP_PROJECT_ID}" ]]; then
-  echo "Error: GCP_PROJECT_ID is not set and could not be detected via gcloud config."
-  exit 1
-fi
 
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║          PostPilot — GCP Cloud Run Deployment                ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo "Project: ${GCP_PROJECT_ID}"
-echo "Region:  ${GCP_REGION}"
-echo "Repo:    ${ARTIFACT_REPO}"
-echo ""
+CLOUD_RUN_SA="${CLOUD_RUN_SA:-postpilot-cloud-run@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
 
-# Helper to retrieve Cloud Run service URL
-get_service_url() {
-  local service_name=$1
-  gcloud run services describe "${service_name}" \
-    --project "${GCP_PROJECT_ID}" \
-    --region "${GCP_REGION}" \
-    --format 'value(status.url)' 2>/dev/null || echo ""
-}
 
-# 1. Run database migrations
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  echo "▶ Running database migrations..."
-  cd migrations
-  DATABASE_URL="${DATABASE_URL}" pnpm migrate:up
-  cd ..
-  echo "✓ Migrations complete"
-  echo ""
-else
-  echo "⚠ DATABASE_URL not set locally; skipping migration step."
-  echo "  (Make sure migrations are run on your database instance.)"
-  echo ""
-fi
+#######################################
+# Validate secrets
+#######################################
 
-# 2. Build images using Cloud Build
-echo "▶ Triggering Cloud Build to build and push images..."
-gcloud builds submit . \
-  --project "${GCP_PROJECT_ID}" \
-  --config cloudbuild.yaml \
-  --substitutions=_GCP_REGION="${GCP_REGION}",_ARTIFACT_REPO="${ARTIFACT_REPO}"
-echo "✓ Cloud Build complete"
-echo ""
+DATABASE_URL="${DATABASE_URL:?DATABASE_URL is required}"
 
-# Common environment variables for all backend services
-# (Usually set via Cloud Run env vars. In production, prefer GCP Secret Manager for sensitive keys)
-DB_URL_VAL="${DATABASE_URL:-postgresql://postpilot:postpilot@localhost:5432/postpilot}"
-REDIS_URL_VAL="${REDIS_URL:-redis://localhost:6379}"
-GCS_BUCKET_VAL="${GCS_BUCKET:-postpilot-assets}"
-JWT_SECRET_VAL="${JWT_SECRET:-postpilot-dev-secret}"
-GROQ_API_KEY_VAL="${GROQ_API_KEY:-}"
+REDIS_URL="${REDIS_URL:?REDIS_URL is required}"
 
-# Service discovery: get URLs of downstream services if they exist already, or fallback to temporary names
-ASSET_URL="$(get_service_url asset-service)"
-AUTH_URL="$(get_service_url auth-service)"
-PUBLISHING_URL="$(get_service_url publishing-service)"
-TARGETING_URL="$(get_service_url targeting-engine)"
-ANALYTICS_URL="$(get_service_url analytics-engine)"
-NOTIFICATION_URL="$(get_service_url notification-service)"
+JWT_SECRET="${JWT_SECRET:?JWT_SECRET is required}"
 
-ASSET_URL="${ASSET_URL:-http://asset-service}"
-AUTH_URL="${AUTH_URL:-http://auth-service}"
-PUBLISHING_URL="${PUBLISHING_URL:-http://publishing-service}"
-TARGETING_URL="${TARGETING_URL:-http://targeting-engine}"
-ANALYTICS_URL="${ANALYTICS_URL:-http://analytics-engine}"
-NOTIFICATION_URL="${NOTIFICATION_URL:-http://notification-service}"
 
-# Deploy single service if requested
-if [[ -n "${SERVICE:-}" ]]; then
-  echo "▶ Deploying single service: ${SERVICE}..."
-  IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE}:${IMAGE_TAG}"
+GCS_BUCKET="${GCS_BUCKET:?GCS_BUCKET is required}"
 
-  ENV_ARGS=(
-    "DATABASE_URL=${DB_URL_VAL}"
-    "REDIS_URL=${REDIS_URL_VAL}"
-  )
+GROQ_API_KEY="${GROQ_API_KEY:-}"
 
-  if [[ "${SERVICE}" == "api-gateway" ]]; then
-    ENV_ARGS+=(
-      "JWT_SECRET=${JWT_SECRET_VAL}"
-      "ASSET_SERVICE_URL=${ASSET_URL}"
-      "AUTH_SERVICE_URL=${AUTH_URL}"
-      "PUBLISHING_SERVICE_URL=${PUBLISHING_URL}"
-      "TARGETING_SERVICE_URL=${TARGETING_URL}"
-      "ANALYTICS_SERVICE_URL=${ANALYTICS_URL}"
-      "NOTIFICATION_SERVICE_URL=${NOTIFICATION_URL}"
+
+
+#######################################
+# Parse arguments
+#######################################
+
+VPC_ARGS=()
+
+CLOUDSQL_ARGS=()
+
+
+while [[ $# -gt 0 ]]; do
+
+case "$1" in
+
+--vpc-connector)
+
+    VPC_ARGS+=(
+
+        --vpc-connector "$2"
+
     )
-  elif [[ "${SERVICE}" == "asset-service" || "${SERVICE}" == "compression-engine" || "${SERVICE}" == "transcoder" || "${SERVICE}" == "repurposing-engine" ]]; then
-    ENV_ARGS+=("GCS_BUCKET=${GCS_BUCKET_VAL}")
-    if [[ "${SERVICE}" == "repurposing-engine" ]]; then
-      ENV_ARGS+=(
-        "GROQ_API_KEY=${GROQ_API_KEY_VAL}"
-        "GCS_PUBLIC_URL=https://storage.googleapis.com/${GCS_BUCKET_VAL}"
-      )
-    fi
-  elif [[ "${SERVICE}" == "auth-service" ]]; then
-    ENV_ARGS+=(
-      "GCP_PROJECT_ID=${GCP_PROJECT_ID}"
-      "VAULT_PROVIDER=gcp"
+
+    shift 2
+    ;;
+
+
+--add-cloudsql-instances)
+
+    CLOUDSQL_ARGS+=(
+
+        --add-cloudsql-instances "$2"
+
     )
-  elif [[ "${SERVICE}" == "analytics-engine" ]]; then
-    ENV_ARGS+=("GROQ_API_KEY=${GROQ_API_KEY_VAL}")
-  elif [[ "${SERVICE}" == "web" ]]; then
-    API_GATEWAY_URL="$(get_service_url api-gateway)"
-    ENV_ARGS=("NEXT_PUBLIC_API_URL=${API_GATEWAY_URL:-http://api-gateway}")
-  fi
 
-  # Build --set-env-vars string
-  ENV_STRING=$(IFS=,; echo "${ENV_ARGS[*]}")
+    shift 2
+    ;;
 
-  gcloud run deploy "${SERVICE}" \
-    --project "${GCP_PROJECT_ID}" \
-    --image "${IMAGE}" \
-    --region "${GCP_REGION}" \
-    --platform managed \
-    --allow-unauthenticated \
-    ${VPC_FLAG} ${CLOUDSQL_FLAG} \
-    --set-env-vars "${ENV_STRING}"
 
-  echo "✓ ${SERVICE} deployed successfully"
-  exit 0
-fi
+--help|-h)
 
-# Deploy all services in order (dependencies first)
-SERVICES_TO_DEPLOY=(
-  auth-service
-  asset-service
-  publishing-service
-  targeting-engine
-  analytics-engine
-  notification-service
-  compression-engine
-  transcoder
-  repurposing-engine
-  api-gateway
-  web
-)
+cat <<EOF
 
-for SERV in "${SERVICES_TO_DEPLOY[@]}"; do
-  echo "▶ Deploying ${SERV}..."
-  IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${SERV}:${IMAGE_TAG}"
+Usage:
 
-  ENV_ARGS=(
-    "DATABASE_URL=${DB_URL_VAL}"
-    "REDIS_URL=${REDIS_URL_VAL}"
-  )
+$0 [options]
 
-  if [[ "${SERV}" == "api-gateway" ]]; then
-    # Resolve fresh URLs for dependencies that were just deployed
-    ASSET_URL="$(get_service_url asset-service)"
-    AUTH_URL="$(get_service_url auth-service)"
-    PUBLISHING_URL="$(get_service_url publishing-service)"
-    TARGETING_URL="$(get_service_url targeting-engine)"
-    ANALYTICS_URL="$(get_service_url analytics-engine)"
-    NOTIFICATION_URL="$(get_service_url notification-service)"
 
-    ENV_ARGS+=(
-      "JWT_SECRET=${JWT_SECRET_VAL}"
-      "ASSET_SERVICE_URL=${ASSET_URL:-http://asset-service}"
-      "AUTH_SERVICE_URL=${AUTH_URL:-http://auth-service}"
-      "PUBLISHING_SERVICE_URL=${PUBLISHING_URL:-http://publishing-service}"
-      "TARGETING_SERVICE_URL=${TARGETING_URL:-http://targeting-engine}"
-      "ANALYTICS_SERVICE_URL=${ANALYTICS_URL:-http://analytics-engine}"
-      "NOTIFICATION_SERVICE_URL=${NOTIFICATION_URL:-http://notification-service}"
-    )
-  elif [[ "${SERV}" == "asset-service" || "${SERV}" == "compression-engine" || "${SERV}" == "transcoder" || "${SERV}" == "repurposing-engine" ]]; then
-    ENV_ARGS+=("GCS_BUCKET=${GCS_BUCKET_VAL}")
-    if [[ "${SERV}" == "repurposing-engine" ]]; then
-      ENV_ARGS+=(
-        "GROQ_API_KEY=${GROQ_API_KEY_VAL}"
-        "GCS_PUBLIC_URL=https://storage.googleapis.com/${GCS_BUCKET_VAL}"
-      )
-    fi
-  elif [[ "${SERV}" == "auth-service" ]]; then
-    ENV_ARGS+=(
-      "GCP_PROJECT_ID=${GCP_PROJECT_ID}"
-      "VAULT_PROVIDER=gcp"
-    )
-  elif [[ "${SERV}" == "analytics-engine" ]]; then
-    ENV_ARGS+=("GROQ_API_KEY=${GROQ_API_KEY_VAL}")
-  elif [[ "${SERV}" == "web" ]]; then
-    API_GATEWAY_URL="$(get_service_url api-gateway)"
-    ENV_ARGS=("NEXT_PUBLIC_API_URL=${API_GATEWAY_URL:-http://api-gateway}")
-  fi
+Options:
 
-  ENV_STRING=$(IFS=,; echo "${ENV_ARGS[*]}")
+--vpc-connector NAME
 
-  gcloud run deploy "${SERV}" \
-    --project "${GCP_PROJECT_ID}" \
-    --image "${IMAGE}" \
-    --region "${GCP_REGION}" \
-    --platform managed \
-    --allow-unauthenticated \
-    ${VPC_FLAG} ${CLOUDSQL_FLAG} \
-    --set-env-vars "${ENV_STRING}"
-  
-  echo "✓ ${SERV} deployed"
-  echo ""
+--add-cloudsql-instances INSTANCE
+
+
+EOF
+
+exit 0
+;;
+
+
+*)
+
+echo "Unknown argument: $1"
+
+shift
+;;
+
+esac
+
 done
 
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  All PostPilot services deployed successfully to GCP.       ║"
-echo "║  Web Frontend: $(get_service_url web)                       ║"
-echo "║  API Gateway:  $(get_service_url api-gateway)               ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+
+
+#######################################
+# Display configuration
+#######################################
+
+echo "
+=================================================
+ PostPilot Cloud Run Deployment
+=================================================
+
+Project:
+${GCP_PROJECT_ID}
+
+Region:
+${GCP_REGION}
+
+Artifact Registry:
+${ARTIFACT_REPO}
+
+Runtime Service Account:
+${CLOUD_RUN_SA}
+
+Image Tag:
+${IMAGE_TAG}
+
+=================================================
+"
+
+
+
+#######################################
+# Helper functions
+#######################################
+
+
+get_service_url()
+{
+
+local SERVICE_NAME=$1
+
+
+gcloud run services describe "${SERVICE_NAME}" \
+--project "${GCP_PROJECT_ID}" \
+--region "${GCP_REGION}" \
+--format="value(status.url)" \
+2>/dev/null || true
+
+}
+
+
+
+deploy_service()
+{
+
+SERVICE_NAME=$1
+
+
+echo ""
+echo "=========================================="
+echo "Deploying ${SERVICE_NAME}"
+echo "=========================================="
+
+
+IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}:${IMAGE_TAG}"
+
+
+
+ENV_ARGS=(
+
+"DATABASE_URL=${DATABASE_URL}"
+
+"REDIS_URL=${REDIS_URL}"
+
+)
+
+
+
+####################################
+# Service specific configuration
+####################################
+
+
+case "${SERVICE_NAME}" in
+
+
+api-gateway)
+
+
+ASSET_URL=$(get_service_url asset-service)
+
+AUTH_URL=$(get_service_url auth-service)
+
+PUBLISHING_URL=$(get_service_url publishing-service)
+
+TARGETING_URL=$(get_service_url targeting-engine)
+
+ANALYTICS_URL=$(get_service_url analytics-engine)
+
+NOTIFICATION_URL=$(get_service_url notification-service)
+
+
+
+ENV_ARGS+=(
+
+"JWT_SECRET=${JWT_SECRET}"
+
+"ASSET_SERVICE_URL=${ASSET_URL}"
+
+"AUTH_SERVICE_URL=${AUTH_URL}"
+
+"PUBLISHING_SERVICE_URL=${PUBLISHING_URL}"
+
+"TARGETING_SERVICE_URL=${TARGETING_URL}"
+
+"ANALYTICS_SERVICE_URL=${ANALYTICS_URL}"
+
+"NOTIFICATION_SERVICE_URL=${NOTIFICATION_URL}"
+
+)
+
+;;
+
+
+asset-service|compression-engine|transcoder|repurposing-engine)
+
+
+ENV_ARGS+=(
+
+"GCS_BUCKET=${GCS_BUCKET}"
+
+)
+
+
+if [[ "${SERVICE_NAME}" == "repurposing-engine" ]]
+
+then
+
+ENV_ARGS+=(
+
+"GROQ_API_KEY=${GROQ_API_KEY}"
+
+"GCS_PUBLIC_URL=https://storage.googleapis.com/${GCS_BUCKET}"
+
+)
+
+fi
+
+;;
+
+
+analytics-engine)
+
+
+ENV_ARGS+=(
+
+"GROQ_API_KEY=${GROQ_API_KEY}"
+
+)
+
+;;
+
+
+auth-service)
+
+
+ENV_ARGS+=(
+
+"GCP_PROJECT_ID=${GCP_PROJECT_ID}"
+
+"VAULT_PROVIDER=gcp"
+
+)
+
+;;
+
+
+web)
+
+
+API_URL=$(get_service_url api-gateway)
+
+
+ENV_ARGS=(
+
+"NEXT_PUBLIC_API_URL=${API_URL}"
+
+)
+
+;;
+
+
+esac
+
+
+
+ENV_STRING=$(IFS=, ; echo "${ENV_ARGS[*]}")
+
+
+
+gcloud run deploy "${SERVICE_NAME}" \
+
+--project "${GCP_PROJECT_ID}" \
+
+--region "${GCP_REGION}" \
+
+--platform managed \
+
+--image "${IMAGE}" \
+
+--service-account "${CLOUD_RUN_SA}" \
+
+--allow-unauthenticated \
+
+"${VPC_ARGS[@]}" \
+
+"${CLOUDSQL_ARGS[@]}" \
+
+--set-env-vars "${ENV_STRING}"
+
+
+
+echo ""
+
+echo "SUCCESS: ${SERVICE_NAME} deployed"
+
+}
+
+
+
+#######################################
+# Deployment order
+#######################################
+
+
+SERVICES=(
+
+auth-service
+
+asset-service
+
+publishing-service
+
+targeting-engine
+
+analytics-engine
+
+notification-service
+
+compression-engine
+
+transcoder
+
+repurposing-engine
+
+api-gateway
+
+web
+
+)
+
+
+
+#######################################
+# Single service deployment
+#######################################
+
+
+if [[ -n "${SERVICE:-}" ]]
+
+then
+
+deploy_service "${SERVICE}"
+
+exit 0
+
+fi
+
+
+
+#######################################
+# Deploy all services
+#######################################
+
+
+for SERVICE_NAME in "${SERVICES[@]}"
+
+do
+
+deploy_service "${SERVICE_NAME}"
+
+done
+
+
+
+echo ""
+
+echo "================================================="
+echo " PostPilot deployment completed successfully"
+echo "================================================="
+
+
+echo ""
+
+echo "Frontend:"
+get_service_url web
+
+
+echo ""
+
+echo "API Gateway:"
+get_service_url api-gateway
