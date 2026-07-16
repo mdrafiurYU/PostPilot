@@ -4,7 +4,7 @@
 # docker build -f apps/web/Dockerfile -t postpilot/web:latest .
 
 # ── Builder ───────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
@@ -32,7 +32,7 @@ RUN pnpm --filter @postpilot/types run build
 RUN pnpm --filter @postpilot/web run build
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
