@@ -5,7 +5,7 @@ const logger = createLogger('compression-engine')
 // Consumes asset.uploaded events; produces bitrate ladders, VMAF scores, HLS manifests.
 // Requirements: 7.1–7.11
 
-import express from 'express'
+import express, { type Express, type Request, type Response } from 'express'
 import type { AssetUploadedEvent } from '@postpilot/events'
 import type { Rendition, Adaptation } from '@postpilot/types'
 import { selectCodec, PLATFORM_CAPABILITIES } from './codecSelection.js'
@@ -272,9 +272,9 @@ async function processVideoAsset(
 
 // ─── Cloud Run HTTP Health Server ─────────────────────────────────────────────
 
-const app = express()
+const app: Express = express()
 
-app.get('/health', (_req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'compression-engine',

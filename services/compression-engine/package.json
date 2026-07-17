@@ -10,13 +10,14 @@
   },
   "dependencies": {
     "@postpilot/events": "workspace:*",
+    "@postpilot/logger": "workspace:*",
     "@postpilot/queue": "workspace:*",
     "@postpilot/types": "workspace:*",
     "express": "^4.19.2",
-    "pg": "^8.12.0",
-    "@postpilot/logger": "workspace:*"
+    "pg": "^8.12.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.25",
     "@types/pg": "^8.11.6",
     "fast-check": "^3.19.0",
     "typescript": "^5.4.5",
