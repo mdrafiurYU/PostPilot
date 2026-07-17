@@ -1,11 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "../..",
+    "rootDir": "src",
     "outDir": "dist",
+    "baseUrl": ".",
     "paths": {
-      "@postpilot/types": ["../types/src/index.ts"]
-    }
+      "@postpilot/*": [
+        "../*"
+      ]
+    },
+    "composite": true
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
