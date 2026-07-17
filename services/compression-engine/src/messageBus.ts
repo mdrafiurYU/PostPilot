@@ -16,12 +16,18 @@ import {
   type TypedConsumer,
   type EventHandler,
 } from '@postpilot/queue'
-import type { PostPilotEvent, AssetUploadedEvent } from '@postpilot/events'
+
+import type { PostPilotEvent } from '@postpilot/events'
 
 const queueClient = createQueueClient()
 
 let producer: TypedProducer | null = null
 let consumer: TypedConsumer | null = null
+
+const pendingSubscriptions: Array<{
+  eventType: string
+  handler: EventHandler<any>
+}> = []
 
 async function getProducer(): Promise<TypedProducer> {
   if (!producer) {
@@ -30,30 +36,63 @@ async function getProducer(): Promise<TypedProducer> {
   return producer
 }
 
-export async function publishEvent(event: PostPilotEvent): Promise<void> {
+export async function publishEvent(
+  event: PostPilotEvent
+): Promise<void> {
   const p = await getProducer()
   await p.publish(event)
 }
 
+/**
+ * Register event handlers.
+ *
+ * Can be called before or after startConsuming()
+ */
 export function subscribe<T extends PostPilotEvent>(
   eventType: T['type'],
   handler: EventHandler<T>
 ): void {
-  if (!consumer) {
-    throw new Error('[messageBus] call startConsuming() before subscribe()')
+  if (consumer) {
+    consumer.subscribe(eventType,handler)
+    return
   }
-  consumer.subscribe(eventType, handler)
+
+  pendingSubscriptions.push({eventType,handler,})
 }
 
+/**
+ * Start queue consumer
+ */
 export async function startConsuming(): Promise<void> {
+  if (consumer) {
+    logger.warn('[messageBus] consumer already started')
+    return
+  }
+
   await ensureQueues(queueClient)
 
-  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
-  consumer = createConsumer(queueClient, {
-    queues: [TOPICS.ASSET_UPLOADED],
-    idempotencyStore: new RedisIdempotencyStore(redisUrl),
-  })
+  const redisUrl = process.env.REDIS_URL
+
+  if (!redisUrl) {
+    throw new Error("REDIS_URL environment variable is required")
+  }
+
+  consumer = createConsumer(queueClient,{
+      queues: [TOPICS.ASSET_UPLOADED],
+      idempotencyStore: new RedisIdempotencyStore(redisUrl),
+    })
+
+  // Register subscriptions created before startup
+  for (const subscription of pendingSubscriptions) {
+    consumer.subscribe(
+      subscription.eventType,
+      subscription.handler
+    )
+  }
+
   await consumer.start()
+
+  logger.info('[messageBus] consumer started')
 }
 
 export async function stopConsuming(): Promise<void> {
@@ -71,13 +110,17 @@ export async function disconnect(): Promise<void> {
   }
 }
 
-/** Simulate receiving an event (used in tests and local dev) */
+
+
+/**
+ * Simulate receiving an event
+ * Used only for tests/local development
+ */
 export async function simulateEvent(event: PostPilotEvent): Promise<void> {
   if (!consumer) {
-    logger.warn('[messageBus] no consumer active — call startConsuming() first')
+    logger.warn('[messageBus] no consumer active')
     return
   }
-  // Re-use the consumer's internal handler map via a direct publish + consume cycle
-  // For tests, wire handlers directly via subscribe() after calling startConsuming()
+
   logger.warn('[messageBus] simulateEvent is for local dev only')
 }

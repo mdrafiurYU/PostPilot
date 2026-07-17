@@ -19,7 +19,7 @@ import { computeVmaf, checkVmafThreshold, recordQualityShortfall } from './vmafS
 import { generateHlsManifest } from './manifestGeneration.js'
 import { convertToWebP, isImageFormat } from './imageConversion.js'
 import { uploadToS3, uploadStringToS3 } from './s3.js'
-import { publishEvent, subscribe } from './messageBus.js'
+import { subscribe, publishEvent, startConsuming } from './messageBus.js'
 import {
   getAssetById,
   updateAssetStatus,
@@ -28,6 +28,7 @@ import {
   upsertAdaptation,
 } from './db.js'
 import { unlink } from 'fs/promises'
+import express from 'express'
 
 // ─── Creator tier lookup (stub) ───────────────────────────────────────────────
 
@@ -269,10 +270,60 @@ async function processVideoAsset(
   }
 }
 
+// ─── Cloud Run HTTP Health Server ─────────────────────────────────────────────
+
+const app = express()
+
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'compression-engine',
+  })
+})
+
+const PORT = Number(process.env.PORT || 8080)
+
+app.listen(PORT, () => {
+  logger.info(
+    `[compression-engine] health server listening on port ${PORT}`,
+  )
+})
+
+
 // ─── Worker startup ───────────────────────────────────────────────────────────
 
-subscribe<AssetUploadedEvent>('asset.uploaded', handleAssetUploaded)
+async function startWorker() {
+  try {
+    await startConsuming()
 
-logger.info('[compression-engine] worker started, listening for asset.uploaded events')
+    subscribe<AssetUploadedEvent>(
+      'asset.uploaded',
+      handleAssetUploaded,
+    )
 
-export { handleAssetUploaded }
+    logger.info(
+      '[compression-engine] worker started, listening for asset.uploaded events',
+    )
+
+  } catch (err) {
+    logger.error(
+      {
+        err:
+          err instanceof Error
+            ? err
+            : new Error(String(err)),
+      },
+      '[compression-engine] failed to start worker',
+    )
+
+    process.exit(1)
+  }
+}
+
+
+if (process.env.NODE_ENV !== 'test') {
+  startWorker()
+}
+
+
+export { handleAssetUploaded, app }
