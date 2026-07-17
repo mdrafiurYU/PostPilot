@@ -10,6 +10,7 @@ export interface Asset {
     duration_seconds?: number;
     s3_key: string;
     status: AssetStatus;
+    failure_reason?: string;
     created_at: Date;
     updated_at: Date;
 }
@@ -78,6 +79,7 @@ export interface Post {
     id: string;
     creator_id: string;
     channel_id: string;
+    channel?: Channel;
     asset_id?: string;
     clip_id?: string;
     caption_id?: string;

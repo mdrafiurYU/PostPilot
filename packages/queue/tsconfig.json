@@ -2,23 +2,20 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "baseUrl": ".",
-    "composite": true,
     "paths": {
+      "@postpilot/types": [
+        "../types/dist/index.d.ts"
+      ],
+      "@postpilot/events": [
+        "../events/dist/index.d.ts"
+      ],
       "@postpilot/*": [
         "../*"
       ]
-    }
-  },
-  "references": [
-    {
-      "path": "../types"
     },
-    {
-      "path": "../events"
-    }
-  ],
+    "rootDir": "./src"
+  },
   "include": [
     "src/**/*"
   ],
