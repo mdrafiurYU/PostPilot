@@ -5,6 +5,7 @@ const logger = createLogger('compression-engine')
 // Consumes asset.uploaded events; produces bitrate ladders, VMAF scores, HLS manifests.
 // Requirements: 7.1–7.11
 
+import express from 'express'
 import type { AssetUploadedEvent } from '@postpilot/events'
 import type { Rendition, Adaptation } from '@postpilot/types'
 import { selectCodec, PLATFORM_CAPABILITIES } from './codecSelection.js'
@@ -19,7 +20,7 @@ import { computeVmaf, checkVmafThreshold, recordQualityShortfall } from './vmafS
 import { generateHlsManifest } from './manifestGeneration.js'
 import { convertToWebP, isImageFormat } from './imageConversion.js'
 import { uploadToS3, uploadStringToS3 } from './s3.js'
-import { subscribe, publishEvent, startConsuming } from './messageBus.js'
+import { subscribe, publishEvent, startConsuming, disconnect } from './messageBus.js'
 import {
   getAssetById,
   updateAssetStatus,
@@ -28,7 +29,6 @@ import {
   upsertAdaptation,
 } from './db.js'
 import { unlink } from 'fs/promises'
-import express from 'express'
 
 // ─── Creator tier lookup (stub) ───────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ app.get('/health', (_req, res) => {
 
 const PORT = Number(process.env.PORT || 8080)
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   logger.info(
     `[compression-engine] health server listening on port ${PORT}`,
   )
@@ -293,19 +293,21 @@ app.listen(PORT, () => {
 // ─── Worker startup ───────────────────────────────────────────────────────────
 
 async function startWorker() {
+
   try {
-    await startConsuming()
 
     subscribe<AssetUploadedEvent>(
       'asset.uploaded',
       handleAssetUploaded,
     )
 
+    await startConsuming()
+
     logger.info(
       '[compression-engine] worker started, listening for asset.uploaded events',
     )
-
   } catch (err) {
+
     logger.error(
       {
         err:
@@ -320,10 +322,16 @@ async function startWorker() {
   }
 }
 
-
 if (process.env.NODE_ENV !== 'test') {
   startWorker()
 }
 
+process.on('SIGTERM', async () => {
+  logger.info(
+    '[compression-engine] shutting down',
+  )
+  await disconnect()
+  process.exit(0)
+})
 
 export { handleAssetUploaded, app }
