@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto'
 import express, { type Express, type Request, type Response } from 'express'
 import type { AssetRepurposedEvent, TargetingReadyEvent } from '@postpilot/events'
 import type { Platform } from '@postpilot/types'
-import { subscribe, publishEvent } from './messageBus.js'
+import { subscribe, publishEvent, startConsuming } from './messageBus.js'
 import { upsertHashtagSuggestions, getHashtagSuggestions, getChannel, getPost } from './db.js'
 import { generateHashtagSuggestions } from './hashtagGeneration.js'
 import { generateTimingRecommendations } from './timingRecommendation.js'
@@ -21,54 +21,58 @@ const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'linkedin', 'fa
 
 // ─── Message bus consumer ─────────────────────────────────────────────────────
 
-subscribe<AssetRepurposedEvent>('asset.repurposed', async (event) => {
-  const { assetId, clips } = event.payload
+async function initializeMessageBus() {
 
-  logger.info(`[targeting-engine] processing asset.repurposed for asset ${assetId}`)
+  await startConsuming()
 
-  try {
-    // For each clip, generate hashtag suggestions for all platforms and persist them.
-    // The clip id is used as the post_id for pre-generation purposes.
-    for (const clip of clips) {
-      const postId = clip.id
-      const allHashtags = []
+  subscribe<AssetRepurposedEvent>('asset.repurposed', async (event) => {
+    const { assetId, clips } = event.payload
 
-      for (const platform of PLATFORMS) {
-        const suggestions = generateHashtagSuggestions(postId, platform)
-        await upsertHashtagSuggestions(postId, suggestions)
-        allHashtags.push(...suggestions)
-        logger.info(
-          `[targeting-engine] generated ${suggestions.length} hashtags for clip ${postId} on ${platform}`,
-        )
+    logger.info(`[targeting-engine] processing asset.repurposed for asset ${assetId}`)
+
+    try {
+      // For each clip, generate hashtag suggestions for all platforms and persist them.
+      // The clip id is used as the post_id for pre-generation purposes.
+      for (const clip of clips) {
+        const postId = clip.id
+        const allHashtags = []
+
+        for (const platform of PLATFORMS) {
+          const suggestions = generateHashtagSuggestions(postId, platform)
+          await upsertHashtagSuggestions(postId, suggestions)
+          allHashtags.push(...suggestions)
+          logger.info(
+            `[targeting-engine] generated ${suggestions.length} hashtags for clip ${postId} on ${platform}`,
+          )
+        }
+
+        // Emit targeting.ready with hashtags for the first platform as a representative sample
+        const primaryPlatform: Platform = 'tiktok'
+        const primaryHashtags = allHashtags.filter((h) => h.platform === primaryPlatform)
+
+        const targetingReadyEvent: TargetingReadyEvent = {
+          eventId: randomUUID(),
+          occurredAt: new Date().toISOString(),
+          type: 'targeting.ready',
+          payload: {
+            assetId,
+            postId,
+            hashtags: primaryHashtags,
+            timingSlots: [], // populated by timing endpoint (task 7.3)
+          },
+        }
+        await publishEvent(targetingReadyEvent)
       }
 
-      // Emit targeting.ready with hashtags for the first platform as a representative sample
-      const primaryPlatform: Platform = 'tiktok'
-      const primaryHashtags = allHashtags.filter((h) => h.platform === primaryPlatform)
-
-      const targetingReadyEvent: TargetingReadyEvent = {
-        eventId: randomUUID(),
-        occurredAt: new Date().toISOString(),
-        type: 'targeting.ready',
-        payload: {
-          assetId,
-          postId,
-          hashtags: primaryHashtags,
-          timingSlots: [], // populated by timing endpoint (task 7.3)
-        },
-      }
-      await publishEvent(targetingReadyEvent)
+      logger.info(`[targeting-engine] hashtag pre-generation complete for asset ${assetId}`)
+    } catch (err) {
+      logger.error(
+        { err: err instanceof Error ? err : new Error(String(err)) },
+        `[targeting-engine] failed to process asset.repurposed for ${assetId}`,
+      )
     }
-
-    logger.info(`[targeting-engine] hashtag pre-generation complete for asset ${assetId}`)
-  } catch (err) {
-    logger.error(
-      { err: err instanceof Error ? err : new Error(String(err)) },
-      `[targeting-engine] failed to process asset.repurposed for ${assetId}`,
-    )
-  }
-})
-
+  })
+}
 // ─── HTTP server ──────────────────────────────────────────────────────────────
 
 const app: Express = express()
@@ -239,11 +243,23 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'targeting-engine', uptime: process.uptime() })
 })
 
-const PORT = process.env.PORT ?? 3006
+const PORT = Number(process.env.PORT ?? 8080)
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    logger.info(`[targeting-engine] listening on port ${PORT}`)
+
+  async function startApplication() {
+    await initializeMessageBus()
+    app.listen(PORT, () => {
+      logger.info(`[targeting-engine] listening on port ${PORT}`)
+    })
+  }
+
+  startApplication().catch((err) => {
+    logger.error(
+      { err: err instanceof Error ? err : new Error(String(err)) },
+      '[targeting-engine] failed during startup'
+    )
+    process.exit(1)
   })
 }
 

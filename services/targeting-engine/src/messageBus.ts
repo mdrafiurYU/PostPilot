@@ -45,7 +45,11 @@ export function subscribe<T extends PostPilotEvent>(
 export async function startConsuming(): Promise<void> {
   await ensureQueues(queueClient)
 
-  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
+  const redisUrl = process.env.REDIS_URL
+
+  if (!redisUrl) {
+    throw new Error("REDIS_URL environment variable is required")
+  }
   consumer = createConsumer(queueClient, {
     queues: [TOPICS.ASSET_REPURPOSED],
     idempotencyStore: new RedisIdempotencyStore(redisUrl),
