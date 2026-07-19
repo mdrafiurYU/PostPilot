@@ -19,6 +19,10 @@ const queueClient = createQueueClient()
 
 let producer: TypedProducer | null = null
 let consumer: TypedConsumer | null = null
+const pendingSubscriptions: Array<{
+  eventType: string
+  handler: EventHandler<any>
+}> = []
 
 async function getProducer(): Promise<TypedProducer> {
   if (!producer) {
@@ -34,22 +38,45 @@ export async function publishEvent(event: PostPilotEvent): Promise<void> {
 
 export function subscribe<T extends PostPilotEvent>(
   eventType: T['type'],
-  handler: EventHandler<T>
+  handler: EventHandler<T>,
 ): void {
-  if (!consumer) {
-    throw new Error('[messageBus] call startConsuming() before subscribe()')
+  if (consumer) {
+    consumer.subscribe(eventType, handler)
+    return
   }
-  consumer.subscribe(eventType, handler)
+
+  pendingSubscriptions.push({
+    eventType,
+    handler,
+  })
 }
 
 export async function startConsuming(): Promise<void> {
+  if (consumer) {
+    return
+  }
+
   await ensureQueues(queueClient)
 
-  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
+  const redisUrl = process.env.REDIS_URL
+
+  if (!redisUrl) {
+    throw new Error('REDIS_URL environment variable is required')
+  }
+
   consumer = createConsumer(queueClient, {
     queues: [TOPICS.ASSET_COMPRESSED],
     idempotencyStore: new RedisIdempotencyStore(redisUrl),
   })
+
+  // Register any subscriptions added before startup
+  for (const subscription of pendingSubscriptions) {
+    consumer.subscribe(
+      subscription.eventType,
+      subscription.handler,
+    )
+  }
+
   await consumer.start()
 }
 

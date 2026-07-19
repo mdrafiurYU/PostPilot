@@ -5,12 +5,13 @@ const logger = createLogger('transcoder')
 // Consumes asset.compressed events; generates platform-specific adaptations.
 // Requirements: 1.3, 1.4, 1.5
 
+import express, { type Express, type Request, type Response } from 'express'
 import type { AssetCompressedEvent } from '@postpilot/events'
 import type { Adaptation } from '@postpilot/types'
 import { PLATFORM_VARIANTS } from './platformVariants.js'
 import { encodeAdaptation, probeVideoDimensions } from './adaptationPipeline.js'
 import { uploadToS3 } from './s3.js'
-import { publishEvent, subscribe } from './messageBus.js'
+import { publishEvent, subscribe, startConsuming } from './messageBus.js'
 import { getAssetById, updateAssetStatus, upsertAdaptation } from './db.js'
 import { unlink } from 'fs/promises'
 
@@ -139,10 +140,53 @@ async function handleAssetCompressed(event: AssetCompressedEvent): Promise<void>
   }
 }
 
-// ─── Worker startup ───────────────────────────────────────────────────────────
+// ─── Cloud Run HTTP Health Server ───────────────────────────────────────────
+const app: Express = express()
 
-subscribe<AssetCompressedEvent>('asset.compressed', handleAssetCompressed)
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    service: 'transcoder',
+  })
+})
 
-logger.info('[transcoder] worker started, listening for asset.compressed events')
+const PORT = Number(process.env.PORT || 8080)
 
-export { handleAssetCompressed }
+app.listen(PORT, () => {
+  logger.info(`[transcoder] health server listening on port ${PORT}`)
+})
+
+// ─── Worker startup ─────────────────────────────────────────────────────────
+
+async function startWorker() {
+  try {
+    await startConsuming()
+
+    subscribe<AssetCompressedEvent>(
+      'asset.compressed',
+      handleAssetCompressed,
+    )
+
+    logger.info(
+      '[transcoder] worker started, listening for asset.compressed events',
+    )
+  } catch (err) {
+    logger.error(
+      {
+        err:
+          err instanceof Error
+            ? err
+            : new Error(String(err)),
+      },
+      '[transcoder] failed to start worker',
+    )
+
+    process.exit(1)
+  }
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  startWorker()
+}
+
+export { app, handleAssetCompressed }
