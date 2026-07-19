@@ -5,9 +5,10 @@ const logger = createLogger('repurposing-engine')
 // Consumes asset.adapted events; transcribes audio, extracts clips, generates captions, emits asset.repurposed.
 
 import { randomUUID } from 'crypto'
+import express, { type Express, type Request, type Response } from 'express'
 import type { AssetAdaptedEvent, AssetRepurposedEvent } from '@postpilot/events'
 import type { Clip } from '@postpilot/types'
-import { subscribe, publishEvent } from './messageBus.js'
+import { subscribe, publishEvent, startConsuming } from './messageBus.js'
 import { transcribeAudio, generateSubtitleFile, uploadSubtitles } from './transcription.js'
 import { insertClip, updateClipSubtitlesKey, getClipsByAssetId } from './db.js'
 import {
@@ -25,8 +26,11 @@ const MAX_CLIPS = 10
 const MIN_CLIP_DURATION = 15 // seconds
 const MAX_CLIP_DURATION = 90 // seconds
 
-subscribe<AssetAdaptedEvent>('asset.adapted', async (event) => {
+async function handleAssetAdapted(event: AssetAdaptedEvent): Promise<void> {
+
   const { assetId, adaptations } = event.payload
+
+  logger.info(`[repurposing-engine] processing asset.adapted for asset ${assetId}`)
 
   // Only process video assets (adaptations will have video codecs)
   const videoAdaptations = adaptations.filter(
@@ -147,6 +151,52 @@ subscribe<AssetAdaptedEvent>('asset.adapted', async (event) => {
       `[repurposing-engine] processing failed for asset ${assetId}`,
     )
   }
+}
+
+// ─── Cloud Run HTTP Health Server ───────────────────────────────────────────
+const app: Express = express()
+
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    service: 'repurposing-engine',
+  })
 })
 
-logger.info('[repurposing-engine] started, listening for asset.adapted events')
+const PORT = Number(process.env.PORT || 8080)
+
+app.listen(PORT, () => {
+  logger.info(`[repurposing-engine] health server listening on port ${PORT}`)
+})
+
+// ─── Worker startup ─────────────────────────────────────────────────────────
+async function startWorker(){
+  try {
+    await startConsuming()
+
+    subscribe<AssetAdaptedEvent>(
+      'asset.adapted',
+      async(event)=>{
+        await handleAssetAdapted(event)
+      }
+    )
+    logger.info('[repurposing-engine] worker started')
+  } catch(err) {
+    logger.error(
+      {
+        err:
+          err instanceof Error
+          ? err
+          : new Error(String(err))
+      },
+      '[repurposing-engine] startup failed'
+    )
+    process.exit(1)
+  }
+}
+
+if(process.env.NODE_ENV !== 'test'){
+  startWorker()
+}
+
+export { handleAssetAdapted, app }
