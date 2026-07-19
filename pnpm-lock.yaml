@@ -597,10 +597,16 @@ importers:
       '@postpilot/types':
         specifier: workspace:*
         version: link:../../packages/types
+      express:
+        specifier: ^4.22.1
+        version: 4.22.1
       pg:
         specifier: ^8.12.0
         version: 8.20.0
     devDependencies:
+      '@types/express':
+        specifier: ^4.17.25
+        version: 4.17.25
       '@types/pg':
         specifier: ^8.11.6
         version: 8.20.0
